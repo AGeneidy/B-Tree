@@ -12,7 +12,7 @@ public class BTreeFile {
 		// TODO Auto-generated constructor stub
 	}
 
-	public Object getHeaderPage() {
+	public BTreeHeaderPage getHeaderPage() {
 		// TODO Auto-generated method stub
 		return null;
 	}
