@@ -1,8 +1,9 @@
-package tests;
+package test;
 
 import java.io.*;
 import java.util.*;
 import java.lang.*;
+
 import heap.*;
 import bufmgr.*;
 import diskmgr.*;
