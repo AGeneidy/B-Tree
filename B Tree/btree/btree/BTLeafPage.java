@@ -55,4 +55,45 @@ public class BTLeafPage extends BTSortedPage {
 
 	}
 
+	public KeyDataEntry getNext(RID rid) throws IteratorException {
+		KeyDataEntry KDEntry;
+		try {
+			int i = ++rid.slotNo;
+			if (getSlotCnt() <= 0)
+				return null;
+			KDEntry = BT.getEntryFromBytes(getpage(), getSlotOffset(i),
+					getSlotLength(i), keyType, NodeType.LEAF);
+			return KDEntry;
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			throw new IteratorException(e, " ");
+		}
+
+	}
+
+	public KeyDataEntry getCurrent(RID rid) throws IteratorException {
+		rid.slotNo--;
+		return getNext(rid);
+	}
+
+	public boolean delEntry(KeyDataEntry dEntry) throws LeafDeleteException {
+		RID Rid = new RID();
+		KeyDataEntry entry;
+		try {
+			for (entry = getFirst(Rid); entry != null; entry = getNext(Rid)) {
+				if (entry.equals(dEntry)) {
+					if (!super.deleteSortedRecord(Rid))
+						throw new LeafDeleteException(null,
+								"Delete record failed");
+
+					return true;
+				}
+			}
+			return false;
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			throw new LeafDeleteException(e, "");
+		}
+	}
+
 }
