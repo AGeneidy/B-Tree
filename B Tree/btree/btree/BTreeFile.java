@@ -52,4 +52,9 @@ public class BTreeFile {
 		return false;
 	}
 
+	public BTLeafPage findRunStart(KeyClass key, RID curRid) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
 }
