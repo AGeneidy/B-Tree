@@ -48,4 +48,9 @@ public class BTreeHeaderPage {
 		
 	}
 
+	public int get_maxKeySize() {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
 }

@@ -6,6 +6,7 @@ import bufmgr.HashEntryNotFoundException;
 import bufmgr.InvalidFrameNumberException;
 import bufmgr.PageUnpinnedException;
 import bufmgr.ReplacerException;
+import global.AttrType;
 import global.GlobalConst;
 import global.PageId;
 import global.RID;
@@ -20,8 +21,8 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 	private String  dbname; 
 	
 	public BTreeFile(String filename) throws HFDiskMgrException{
-		headerPageId = get_file_entry(filename);
-	    headerPage= new  BTreeHeaderPage( headerPageId);       
+		headerPageId = get_file_entry(filename); //get header id from disk
+	    headerPage= new  BTreeHeaderPage(headerPageId); //creat a HFPage and pin it with headerPageID
 	    dbname = new String(filename);
 	}
 	
@@ -50,16 +51,17 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 	 
 	 
 	 public void close() throws ReplacerException, PageUnpinnedException, HashEntryNotFoundException, InvalidFrameNumberException{
-		 if ( headerPage!=null) { //not deleted
+		 if ( headerPage!=null) { //not destroyed
 			 SystemDefs.JavabaseBM.unpinPage(headerPageId, true);
 			 headerPage=null;
 		 }  
 	 }
 	 
+	 
 	 public void destroyFile() throws HFBufMgrException, HFDiskMgrException, ConstructPageException, IOException, IteratorException{
-		 if( headerPage != null) {
-			 PageId pid= headerPage.get_rootId();
-			 if( pid.pid != INVALID_PAGE) destroyFileRecursive(pid);
+		 if( headerPage != null) { //not destroyed yet!
+			 PageId pid = headerPage.get_rootId();
+			 if( pid.pid != INVALID_PAGE) /* have a root */destroyFileRecursive(pid);
 			 unpinPage(headerPageId,false);
 			 freePage(headerPageId);      
 			 delete_file_entry(dbname);
@@ -89,15 +91,97 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			 unpinPage(pageId,false);
 			 freePage(pageId);
 		 }      
+	 }
+	 
+	 
+	 public void insert(KeyClass key,RID rid) throws KeyTooLongException, KeyNotMatchException, IOException, 
+	 	ConstructPageException, LeafInsertRecException, HFBufMgrException, NodeNotMatchException, ConvertException{
+		 
+		 //Check the Key
+		 if (BT.getKeyLength(key) > headerPage.get_maxKeySize())
+			 throw new KeyTooLongException(null, "");
+		 if (key instanceof StringKey) {
+			 if (headerPage.get_keyType() != AttrType.attrString) 
+				 throw new KeyNotMatchException(null, "");
+		 }else if (key instanceof IntegerKey) {
+			 if (headerPage.get_keyType() != AttrType.attrInteger)	
+				 throw new KeyNotMatchException(null, "");
+		 }else	
+			 throw new KeyNotMatchException(null, "");
+		 
+		 
+		 if (headerPage.get_rootId().pid == INVALID_PAGE) { //no root page
+			 //creat root page (LeafPage)
+			 BTLeafPage newRootPage = new BTLeafPage(headerPage.get_keyType());
+			 PageId newRootPageId = newRootPage.getCurPage();
+			 //set next and prev
+			 newRootPage.setNextPage(new PageId(INVALID_PAGE));
+			 newRootPage.setPrevPage(new PageId(INVALID_PAGE));
+			 //insert the record
+			 newRootPage.insertRecord(key, rid);
+			 //unpin and flush
+			 unpinPage(newRootPageId, true); //dirty
+			 //update the header page
+			 updateHeader(newRootPageId);
+			 return; //end
+		 }
+		 
+		 KeyDataEntry newRootEntry = insertRecursive(key, rid, headerPage.get_rootId());
+		 
+		 
+	 }
+	 
+	 
+	 private KeyDataEntry insertRecursive(KeyClass key, RID rid, PageId currentPageId) throws HFBufMgrException, IOException, 
+	 	ConstructPageException, KeyNotMatchException, NodeNotMatchException, ConvertException, LeafInsertRecException {
+		 
+		 KeyDataEntry upEntry;
+		 
+		 Page curPage = new Page();
+		 pinPage(currentPageId, curPage, false); //pin the root page
+		 BTSortedPage currentPage = new BTSortedPage(curPage, headerPage.get_keyType()); //currentPage >> root page
+		 
+		 //current page (Leaf or Index)
+		 if (currentPage.getType() == NodeType.INDEX) { // recurse and then split if necessary
+			 
+			 BTIndexPage currentIndexPage = new BTIndexPage(curPage,headerPage.get_keyType()); //currentIndexPage >> root page
+			 PageId nextPageId = currentIndexPage.getPageNoByKey(key);
+			 unpinPage(currentPageId,false);
+			 upEntry = insertRecursive(key, rid, nextPageId);
+			
+			 
+		 }else if (currentPage.getType() == NodeType.LEAF) {
+			 BTLeafPage currentLeafPage = new BTLeafPage(curPage,headerPage.get_keyType()); 
+			 
+			 //check avilable space
+			 if (currentLeafPage.available_space() >= BT.getKeyDataLength(key,NodeType.LEAF)) {//no split
+					currentLeafPage.insertRecord(key, rid);
+					unpinPage(currentPageId, true);
+					return null;
+			 }
+			 
+			 
+		 }
+
+
+		 
+		 return null;
+	 }
+
+	
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+
+	
+
+
+	private void updateHeader(PageId newRootPageId) {
+		// TODO Auto-generated method stub
+		
 	}
 
-	
-	//////////////////////////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////////////////////////
-
-	
-	 private void pinPage(PageId pageno, Page page, boolean emptyPage)throws HFBufMgrException {
+	private void pinPage(PageId pageno, Page page, boolean emptyPage)throws HFBufMgrException {
 		try {
 			SystemDefs.JavabaseBM.pinPage(pageno, page, emptyPage);
 		} catch (Exception e) {
@@ -170,11 +254,6 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 	}
 
 	public void traceFilename(String string) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	public void insert(KeyClass key, RID rid) {
 		// TODO Auto-generated method stub
 		
 	}
