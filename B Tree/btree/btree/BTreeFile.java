@@ -94,8 +94,9 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 	 }
 	 
 	 
-	 public void insert(KeyClass key,RID rid) throws KeyTooLongException, KeyNotMatchException, IOException, 
-	 	ConstructPageException, LeafInsertRecException, HFBufMgrException, NodeNotMatchException, ConvertException{
+	 public void insert(KeyClass key,RID rid) throws KeyTooLongException, KeyNotMatchException, IOException,
+	 ConstructPageException, LeafInsertRecException, HFBufMgrException, NodeNotMatchException,
+	 ConvertException, DeleteRecException, InsertRecException, IteratorException{
 		 
 		 //Check the Key
 		 if (BT.getKeyLength(key) > headerPage.get_maxKeySize())
@@ -134,43 +135,148 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 		 
 		 KeyDataEntry newRootEntry = insertRecursive(key, rid, headerPage.get_rootId());
 		 
-		 
+		 if(newRootEntry != null){
+			 
+			 //creat and pin a newRootPage
+			 BTIndexPage newRootPage = new BTIndexPage(headerPage.get_keyType());
+			 PageId  newRootPageId = newRootPage.getCurPage();
+			 
+			 //insert the pushed up entry in the newRootPage
+			 newRootPage.insertKey( newRootEntry.key,((IndexData)newRootEntry.data).getData() );
+			  
+			 //set prev pointer of the newRootPage
+			 newRootPage.setPrevPage(headerPage.get_rootId());
+			  
+			 unpinPage(newRootPageId, true);
+			  
+			 updateHeader(newRootPageId);
+		 }
 	 }
 	 
 	 
 	 private KeyDataEntry insertRecursive(KeyClass key, RID rid, PageId currentPageId) throws HFBufMgrException, IOException, 
-	 	ConstructPageException, KeyNotMatchException, NodeNotMatchException, ConvertException, LeafInsertRecException {
+	 	ConstructPageException, KeyNotMatchException, NodeNotMatchException, ConvertException, LeafInsertRecException, 
+	 	DeleteRecException, IteratorException, InsertRecException {
 		 
 		 KeyDataEntry upEntry;
 		 
 		 Page curPage = new Page();
-		 pinPage(currentPageId, curPage, false); //pin the root page
-		 BTSortedPage currentPage = new BTSortedPage(curPage, headerPage.get_keyType()); //currentPage >> root page
+		 pinPage(currentPageId, curPage, false);
+		 BTSortedPage currentPage = new BTSortedPage(curPage, headerPage.get_keyType());
 		 
-		 //current page (Leaf or Index)
-		 if (currentPage.getType() == NodeType.INDEX) { // recurse and then split if necessary
+		 //current page (Leaf / Index)
+		 if (currentPage.getType() == NodeType.INDEX) { // INDEX >> recurse then split if necessary
 			 
-			 BTIndexPage currentIndexPage = new BTIndexPage(curPage,headerPage.get_keyType()); //currentIndexPage >> root page
-			 PageId nextPageId = currentIndexPage.getPageNoByKey(key);
+			 BTIndexPage currentIndexPage = new BTIndexPage(curPage,headerPage.get_keyType()); 
+			 PageId childPageId = currentIndexPage.getPageNoByKey(key);
 			 
 			 unpinPage(currentPageId,false);
 			 
-			 upEntry = insertRecursive(key, rid, nextPageId);
+			 upEntry = insertRecursive(key, rid, childPageId);
 			
+			 if (upEntry == null) //no split in the prev level
+				 return null;
 			 
-			 //............
+			 //there is a split done in the prev level
+			 //push/copy up done
+			 //pushed nod = upEntry
+			 
+			 //pin current page again
+			 Page page = new Page();
+			 pinPage(currentPageId, page,false);
+			 currentIndexPage = new BTIndexPage(page, headerPage.get_keyType());
+			 
+			 //check available space in index page for pushed up key
+			 if (currentIndexPage.available_space() >= BT.getKeyDataLength(upEntry.key, NodeType.INDEX)){
+				 //push up with no split
+				 currentIndexPage.insertKey(upEntry.key,((IndexData) upEntry.data).getData());
+				 unpinPage(currentPageId, true);
+				 return null;
+			 }
+			 
+			 //the is no space for pushed up key
+			 //split Index Page
+			 
+			 //creat and pin new index page
+			 BTIndexPage newIndexPage = new BTIndexPage(headerPage.get_keyType());
+			 PageId newIndexPageId = newIndexPage.getCurPage();  
+			 
+			 KeyDataEntry tmpEntry;
+			 RID tempRid=new RID();
+			 
+			 //move all records from currentPage >> newPage
+			 for ( tmpEntry= currentIndexPage.getFirst(tempRid);tmpEntry!=null;tmpEntry= currentIndexPage.getFirst(tempRid)){
+				 newIndexPage.insertKey( tmpEntry.key,((IndexData)tmpEntry.data).getData());
+				 currentIndexPage.deleteSortedRecord(tempRid);
+			 }
+			 
+			 //move half the records from newPage to>> currentPage
+			 for (tmpEntry = newIndexPage.getFirst(tempRid);
+					 (currentIndexPage.available_space() >newIndexPage.available_space());
+					 tmpEntry=newIndexPage.getFirst(tempRid)){
+				 currentIndexPage.insertKey( tmpEntry.key,((IndexData)tmpEntry.data).getData());
+				 newIndexPage.deleteSortedRecord(tempRid);
+			 }
+			 
+			 //undo the final record
+			 if ( currentIndexPage.available_space() < newIndexPage.available_space()) {
+				  newIndexPage.insertKey(tmpEntry.key,((IndexData)tmpEntry.data).getData());
+				  currentIndexPage.deleteSortedRecord (new RID(currentIndexPage.getCurPage(),(int)currentIndexPage.getSlotCnt()-1) );              
+			 }
+			 
+			 //put the record in the proper Page
+			 RID firstRid = new RID();
+			 tmpEntry= newIndexPage.getFirst(firstRid);
+			 
+			 if (BT.keyCompare(upEntry.key, tmpEntry.key) >=0 ){ //insert upEntry in the new Page
+			    newIndexPage.insertKey( upEntry.key,((IndexData)upEntry.data).getData());
+			 
+			 }else{ //upEntry (small) >> insert in the current Page
+				 currentIndexPage.insertKey( upEntry.key,((IndexData)upEntry.data).getData());
+				 
+				 //move one record from current page to>> new page
+				 int lastIndex= (int)currentIndexPage.getSlotCnt()-1;
+				 tmpEntry = BT.getEntryFromBytes(currentIndexPage.getpage(),
+						 currentIndexPage.getSlotOffset(lastIndex),
+						 currentIndexPage.getSlotLength(lastIndex),
+						 headerPage.get_keyType(),NodeType.INDEX);
+				 newIndexPage.insertKey(tmpEntry.key,((IndexData)tmpEntry.data).getData());
+				 currentIndexPage.deleteSortedRecord(new RID(currentIndexPage.getCurPage(),lastIndex));  
+			 }
+		        
+			 //delete the pushed up record and return it in upEntry
+			 RID deletedRid = new RID();
+			 upEntry= newIndexPage.getFirst(deletedRid); 
+			 newIndexPage.deleteSortedRecord(deletedRid);
+
+			 //set prev pointer of the new page
+			 newIndexPage.setPrevPage(((IndexData)upEntry.data).getData());
+
+			 //unpin pages
+			 unpinPage(currentPageId, true);
+			 unpinPage(newIndexPageId, true);
+			 
+			 //set the pageId of the pushed up Entry to the newPageID
+			 ((IndexData)upEntry.data).setData(newIndexPageId);
+			  
+			 return upEntry; 
+			 
 			 
 		 }else if (currentPage.getType() == NodeType.LEAF) {
 			 BTLeafPage currentLeafPage = new BTLeafPage(curPage,headerPage.get_keyType()); 
 			 
 			 //check avilable space
-			 if (currentLeafPage.available_space() >= BT.getKeyDataLength(key,NodeType.LEAF)) {//no split
-					currentLeafPage.insertRecord(key, rid);
-					unpinPage(currentPageId, true);
-					return null;
+			 if (currentLeafPage.available_space() >= BT.getKeyDataLength(key,NodeType.LEAF)) {
+				 //no split
+				 currentLeafPage.insertRecord(key, rid);
+				 unpinPage(currentPageId, true);
+				 return null;
 			 }
-			 //no space >> split
-			
+			 
+			 /////////////////////
+			 //no space >> split//
+			 /////////////////////
+			 
 			 //creat new leaf page
 			 BTLeafPage newLeafPage = new BTLeafPage(headerPage.get_keyType());
 			 PageId newLeafPageId = newLeafPage.getCurPage();
@@ -187,11 +293,46 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 				 unpinPage(rightPageId, true);
 			 }
 			 
+			 KeyDataEntry tmpEntry;
+			 RID tempRid = new RID();
 			 
+			 //move all records from currentPage to>> newPage
+			 for (tmpEntry = currentLeafPage.getFirst(tempRid);
+					 tmpEntry != null;
+					 tmpEntry = currentLeafPage.getFirst(tempRid)) {
+				 newLeafPage.insertRecord(tmpEntry.key,((LeafData) (tmpEntry.data)).getData());
+				 currentLeafPage.deleteSortedRecord(tempRid);
+			 }
+			
+			 //move half of records from newPage to>> currentPage
+			 for (tmpEntry = newLeafPage.getFirst(tempRid);
+					 newLeafPage.available_space() < currentLeafPage.available_space();
+					 tmpEntry = newLeafPage.getFirst(tempRid)) {
+					currentLeafPage.insertRecord(tmpEntry.key,((LeafData) tmpEntry.data).getData());
+					newLeafPage.deleteSortedRecord(tempRid);
+			 }
+
+			 //insert the key in the proper page
+			 if (BT.keyCompare(key, tmpEntry.key) < 0) {
+				 // undo the final record
+				 if (currentLeafPage.available_space() < newLeafPage.available_space()) { //<<<<<leh a check
+					 newLeafPage.insertRecord(tmpEntry.key,((LeafData) tmpEntry.data).getData());
+					 currentLeafPage.deleteSortedRecord(new RID(currentLeafPage.getCurPage(),(int) currentLeafPage.getSlotCnt() - 1));
+				 }
+				 currentLeafPage.insertRecord(key, rid);
+			 }else
+				 newLeafPage.insertRecord(key, rid);
 			 
+			 //copy up
+			 tmpEntry = newLeafPage.getFirst(tempRid);
+			 upEntry = new KeyDataEntry(tmpEntry.key, newLeafPageId);
+			 
+			 //unpin Pages
+			 unpinPage(currentPageId, true);
+			 unpinPage(newLeafPageId, true);
+			 
+			 return upEntry;
 		 }
-
-
 		 
 		 return null;
 	 }
@@ -200,15 +341,24 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////////////
+	 
+	 private void updateHeader(PageId newRootPageId) throws HFBufMgrException, IOException {
+		 
+		 Page page = new Page();
+		 pinPage(headerPageId, page,false);
+		 BTreeHeaderPage header= new BTreeHeaderPage(page);
+		 
+		 header.set_rootId(newRootPageId);
+		 
+		 unpinPage(headerPageId, true);
+	 }
+	 
+	 
+	 //////////////////////////////////////////////////////////////////////////////////////////////////
+	 /////////////SHORT CUTS///////////////////////////////////////////////////////////////////////////
+	 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-	
-
-
-	private void updateHeader(PageId newRootPageId) {
-		// TODO Auto-generated method stub
-		
-	}
-
+	 
 	private void pinPage(PageId pageno, Page page, boolean emptyPage)throws HFBufMgrException {
 		try {
 			SystemDefs.JavabaseBM.pinPage(pageno, page, emptyPage);
