@@ -26,7 +26,7 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 	    dbname = new String(filename);
 	}
 	
-	 public BTreeFile(String filename,int keytype,int keysize,int delete_fashion) throws HFDiskMgrException, ConstructPageException, IOException{
+	 public BTreeFile(String filename,int keytype,int keysize,int delete_fashion) throws HFDiskMgrException, IOException, ConstructPageException{
 
 		 headerPageId = get_file_entry(filename);
 		 if( headerPageId==null){ //file not exist
@@ -111,18 +111,24 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 		 
 		 
 		 if (headerPage.get_rootId().pid == INVALID_PAGE) { //no root page
+			
 			 //creat root page (LeafPage)
 			 BTLeafPage newRootPage = new BTLeafPage(headerPage.get_keyType());
 			 PageId newRootPageId = newRootPage.getCurPage();
+			 
 			 //set next and prev
 			 newRootPage.setNextPage(new PageId(INVALID_PAGE));
 			 newRootPage.setPrevPage(new PageId(INVALID_PAGE));
+			 
 			 //insert the record
 			 newRootPage.insertRecord(key, rid);
+			 
 			 //unpin and flush
 			 unpinPage(newRootPageId, true); //dirty
+			 
 			 //update the header page
 			 updateHeader(newRootPageId);
+			 
 			 return; //end
 		 }
 		 
@@ -146,9 +152,13 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			 
 			 BTIndexPage currentIndexPage = new BTIndexPage(curPage,headerPage.get_keyType()); //currentIndexPage >> root page
 			 PageId nextPageId = currentIndexPage.getPageNoByKey(key);
+			 
 			 unpinPage(currentPageId,false);
+			 
 			 upEntry = insertRecursive(key, rid, nextPageId);
 			
+			 
+			 //............
 			 
 		 }else if (currentPage.getType() == NodeType.LEAF) {
 			 BTLeafPage currentLeafPage = new BTLeafPage(curPage,headerPage.get_keyType()); 
@@ -159,6 +169,24 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 					unpinPage(currentPageId, true);
 					return null;
 			 }
+			 //no space >> split
+			
+			 //creat new leaf page
+			 BTLeafPage newLeafPage = new BTLeafPage(headerPage.get_keyType());
+			 PageId newLeafPageId = newLeafPage.getCurPage();
+			 
+			 //set next and prev pointers
+			 newLeafPage.setNextPage(currentLeafPage.getNextPage());
+			 newLeafPage.setPrevPage(currentPageId);
+			 currentLeafPage.setNextPage(newLeafPageId);
+			 //set prev of right page
+			 PageId rightPageId  = newLeafPage.getNextPage();
+			 if (rightPageId.pid != INVALID_PAGE) { //right page available
+				 BTLeafPage rightPage = new BTLeafPage(rightPageId,headerPage.get_keyType());
+				 rightPage.setPrevPage(newLeafPageId);
+				 unpinPage(rightPageId, true);
+			 }
+			 
 			 
 			 
 		 }
