@@ -20,13 +20,13 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 	private PageId  headerPageId;
 	private String  dbname; 
 	
-	public BTreeFile(String filename) throws HFDiskMgrException{
+	public BTreeFile(String filename) throws HFDiskMgrException, ConstructPageException{
 		headerPageId = get_file_entry(filename); //get header id from disk
 	    headerPage= new  BTreeHeaderPage(headerPageId); //creat a HFPage and pin it with headerPageID
 	    dbname = new String(filename);
 	}
 	
-	 public BTreeFile(String filename,int keytype,int keysize,int delete_fashion) throws HFDiskMgrException{
+	 public BTreeFile(String filename,int keytype,int keysize,int delete_fashion) throws HFDiskMgrException, ConstructPageException, IOException{
 
 		 headerPageId = get_file_entry(filename);
 		 if( headerPageId==null){ //file not exist
