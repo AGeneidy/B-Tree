@@ -590,11 +590,23 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 		return apage;
 	}
 
-	public BTFileScan new_scan(KeyClass lowkey, KeyClass hikey) {
+	public BTFileScan new_scan(KeyClass lowkey, KeyClass hikey)
+			throws IOException, PinPageException, ConstructPageException, KeyNotMatchException, HFBufMgrException, IteratorException {
 		// TODO Auto-generated method stub
-		return null;
+		BTFileScan scan = new BTFileScan();
+		if (headerPage.getNextPage().pid == INVALID_PAGE) {
+			scan.leafPage = null;
+			return scan;
+		}
+		scan.bfile = this;
+		scan.treeFilename = dbname;
+		scan.keyType = headerPage.get_keyType();
+		scan.maxKeysize = headerPage.get_maxKeySize();
+		scan.curRid = new RID();
+		scan.endkey = hikey;
+		scan.leafPage = findRunStart(lowkey, scan.curRid);
+		return scan;
 	}
-
 	public void traceFilename(String string) {
 		// TODO Auto-generated method stub
 
