@@ -47,7 +47,6 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			headerPage = new BTreeHeaderPage();
 			headerPageId = headerPage.getPageId();
 			add_file_entry(filename, headerPageId);
-			// headerPage.set_magic0(MAGIC0);
 			headerPage.set_rootId(new PageId(INVALID_PAGE));
 			headerPage.set_keyType((short) keytype);
 			headerPage.set_maxKeySize(keysize);
