@@ -94,12 +94,15 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 
 		if (sortedPage.getType() == NodeType.INDEX) {
 			BTIndexPage indexPage = new BTIndexPage(page, keyType); // pageID<<
-
+			
 			RID rid = new RID();
 			PageId childId;
 			KeyDataEntry entry;
-			for (entry = indexPage.getFirst(rid); entry != null; entry = indexPage
-					.getNext(rid)) {
+			
+			childId = indexPage.getPrevPage();
+			destroyFileRecursive(childId);
+
+			for (entry = indexPage.getFirst(rid); entry != null; entry = indexPage.getNext(rid)) {
 				childId = ((IndexData) (entry.data)).getData();
 				destroyFileRecursive(childId);
 			}
