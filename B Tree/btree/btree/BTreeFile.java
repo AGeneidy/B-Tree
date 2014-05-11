@@ -27,15 +27,13 @@ import diskmgr.Page;
 public class BTreeFile extends IndexFile implements GlobalConst {
 	private BTreeHeaderPage headerPage;
 	private PageId headerPageId;
-	private String dbname;
+	private String BTreeName;
 
 	public BTreeFile(String filename) throws HFDiskMgrException,
 			ConstructPageException {
 		headerPageId = get_file_entry(filename); // get header id from disk
-		headerPage = new BTreeHeaderPage(headerPageId); // creat a HFPage and
-														// pin it with
-														// headerPageID
-		dbname = new String(filename);
+		headerPage = new BTreeHeaderPage(headerPageId); // creat a HFPage and pin it with headerPageID
+		BTreeName = new String(filename);
 	}
 
 	public BTreeFile(String filename, int keytype, int keysize,
@@ -43,6 +41,7 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			ConstructPageException {
 
 		headerPageId = get_file_entry(filename);
+		
 		if (headerPageId == null) { // file not exist
 			headerPage = new BTreeHeaderPage();
 			headerPageId = headerPage.getPageId();
@@ -55,7 +54,7 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 		} else {
 			headerPage = new BTreeHeaderPage(headerPageId);
 		}
-		dbname = new String(filename);
+		BTreeName = new String(filename);
 	}
 
 	// ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -78,7 +77,7 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 				destroyFileRecursive(pid);
 			unpinPage(headerPageId, false);
 			freePage(headerPageId);
-			delete_file_entry(dbname);
+			delete_file_entry(BTreeName);
 			headerPage = null;
 		}
 	}
@@ -89,10 +88,10 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 		pinPage(pageId, page, false);
 
 		int keyType = headerPage.get_keyType();
-		BTSortedPage sortedPage = new BTSortedPage(page, keyType); // pageID<<
+		BTSortedPage sortedPage = new BTSortedPage(page, keyType);
 
 		if (sortedPage.getType() == NodeType.INDEX) {
-			BTIndexPage indexPage = new BTIndexPage(page, keyType); // pageID<<
+			BTIndexPage indexPage = new BTIndexPage(page, keyType);
 			
 			RID rid = new RID();
 			PageId childId;
@@ -152,8 +151,7 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			return; // end
 		}
 
-		KeyDataEntry newRootEntry = insertRecursive(key, rid,
-				headerPage.get_rootId());
+		KeyDataEntry newRootEntry = insertRecursive(key, rid,headerPage.get_rootId());
 
 		if (newRootEntry != null) {
 
@@ -184,15 +182,12 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 
 		Page curPage = new Page();
 		pinPage(currentPageId, curPage, false);
-		BTSortedPage currentPage = new BTSortedPage(curPage,
-				headerPage.get_keyType());
+		BTSortedPage currentPage = new BTSortedPage(curPage,headerPage.get_keyType());
 
 		// current page (Leaf / Index)
-		if (currentPage.getType() == NodeType.INDEX) { // INDEX >> recurse then
-														// split if necessary
+		if (currentPage.getType() == NodeType.INDEX) { // INDEX >> recurse
 
-			BTIndexPage currentIndexPage = new BTIndexPage(curPage,
-					headerPage.get_keyType());
+			BTIndexPage currentIndexPage = new BTIndexPage(curPage,headerPage.get_keyType());
 			PageId childPageId = currentIndexPage.getPageNoByKey(key);
 
 			unpinPage(currentPageId, false);
@@ -232,10 +227,10 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			RID tempRid = new RID();
 
 			// move all records from currentPage >> newPage
-			for (tmpEntry = currentIndexPage.getFirst(tempRid); tmpEntry != null; tmpEntry = currentIndexPage
-					.getFirst(tempRid)) {
-				newIndexPage.insertKey(tmpEntry.key,
-						((IndexData) tmpEntry.data).getData());
+			for (tmpEntry = currentIndexPage.getFirst(tempRid); 
+					tmpEntry != null;
+					tmpEntry = currentIndexPage.getFirst(tempRid)) {
+				newIndexPage.insertKey(tmpEntry.key,((IndexData) tmpEntry.data).getData());
 				currentIndexPage.deleteSortedRecord(tempRid);
 			}
 
@@ -243,36 +238,25 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			for (tmpEntry = newIndexPage.getFirst(tempRid); (currentIndexPage
 					.available_space() > newIndexPage.available_space()); tmpEntry = newIndexPage
 					.getFirst(tempRid)) {
-				currentIndexPage.insertKey(tmpEntry.key,
-						((IndexData) tmpEntry.data).getData());
+				currentIndexPage.insertKey(tmpEntry.key,((IndexData) tmpEntry.data).getData());
 				newIndexPage.deleteSortedRecord(tempRid);
 			}
 
 			// undo the final record
-			if (currentIndexPage.available_space() < newIndexPage
-					.available_space()) {
-				newIndexPage.insertKey(tmpEntry.key,
-						((IndexData) tmpEntry.data).getData());
-				currentIndexPage
-						.deleteSortedRecord(new RID(currentIndexPage
-								.getCurPage(), (int) currentIndexPage
-								.getSlotCnt() - 1));
+			if (currentIndexPage.available_space() < newIndexPage.available_space()) {
+				newIndexPage.insertKey(tmpEntry.key,((IndexData) tmpEntry.data).getData());
+				currentIndexPage.deleteSortedRecord(new RID(currentIndexPage.getCurPage(), (int) currentIndexPage.getSlotCnt() - 1));
 			}
 
 			// put the record in the proper Page
 			RID firstRid = new RID();
 			tmpEntry = newIndexPage.getFirst(firstRid);
 
-			if (BT.keyCompare(upEntry.key, tmpEntry.key) >= 0) { // insert
-																	// upEntry
-																	// in the
-																	// new Page
-				newIndexPage.insertKey(upEntry.key,
-						((IndexData) upEntry.data).getData());
+			if (BT.keyCompare(upEntry.key, tmpEntry.key) >= 0) { // insert upEntry in the new Page
+				newIndexPage.insertKey(upEntry.key,((IndexData) upEntry.data).getData());
 
 			} else { // upEntry (small) >> insert in the current Page
-				currentIndexPage.insertKey(upEntry.key,
-						((IndexData) upEntry.data).getData());
+				currentIndexPage.insertKey(upEntry.key,((IndexData) upEntry.data).getData());
 
 				// move one record from current page to>> new page
 				int lastIndex = (int) currentIndexPage.getSlotCnt() - 1;
@@ -280,13 +264,11 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 						currentIndexPage.getSlotOffset(lastIndex),
 						currentIndexPage.getSlotLength(lastIndex),
 						headerPage.get_keyType(), NodeType.INDEX);
-				newIndexPage.insertKey(tmpEntry.key,
-						((IndexData) tmpEntry.data).getData());
-				currentIndexPage.deleteSortedRecord(new RID(currentIndexPage
-						.getCurPage(), lastIndex));
+				newIndexPage.insertKey(tmpEntry.key,((IndexData) tmpEntry.data).getData());
+				currentIndexPage.deleteSortedRecord(new RID(currentIndexPage.getCurPage(), lastIndex));
 			}
 
-			// delete the pushed up record and return it in upEntry
+			// push up the frist record in the new Page and delete it from the new page
 			RID deletedRid = new RID();
 			upEntry = newIndexPage.getFirst(deletedRid);
 			newIndexPage.deleteSortedRecord(deletedRid);
@@ -294,22 +276,20 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			// set prev pointer of the new page
 			newIndexPage.setPrevPage(((IndexData) upEntry.data).getData());
 
+			// set the pageId of the pushed up Entry to the newPageID
+			((IndexData) upEntry.data).setData(newIndexPageId);
+			
 			// unpin pages
 			unpinPage(currentPageId, true);
 			unpinPage(newIndexPageId, true);
 
-			// set the pageId of the pushed up Entry to the newPageID
-			((IndexData) upEntry.data).setData(newIndexPageId);
-
 			return upEntry;
 
 		} else if (currentPage.getType() == NodeType.LEAF) {
-			BTLeafPage currentLeafPage = new BTLeafPage(curPage,
-					headerPage.get_keyType());
+			BTLeafPage currentLeafPage = new BTLeafPage(curPage,headerPage.get_keyType());
 
 			// check avilable space
-			if (currentLeafPage.available_space() >= BT.getKeyDataLength(key,
-					NodeType.LEAF)) {
+			if (currentLeafPage.available_space() >= BT.getKeyDataLength(key,NodeType.LEAF)) {
 				// no split
 				currentLeafPage.insertRecord(key, rid);
 				unpinPage(currentPageId, true);
@@ -601,7 +581,7 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 			return scan;
 		}
 		scan.bfile = this;
-		scan.treeFilename = dbname;
+		scan.treeFilename = BTreeName;
 		scan.keyType = headerPage.get_keyType();
 		scan.maxKeysize = headerPage.get_maxKeySize();
 		scan.curRid = new RID();
