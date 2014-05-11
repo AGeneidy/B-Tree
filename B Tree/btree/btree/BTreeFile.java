@@ -337,6 +337,44 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 		 return null;
 	 }
 
+	 public boolean Delete(KeyClass key, RID rid) throws IOException, ConstructPageException, HFBufMgrException, KeyNotMatchException, NodeNotMatchException, ConvertException, LeafDeleteException {
+		 
+		 PageId currentPageId =headerPage.get_rootId();
+			
+		 if (currentPageId.pid == INVALID_PAGE) { //no root page
+			 return false;
+		 }
+			
+		 Page curPage = new Page();
+		 pinPage(currentPageId, curPage, false);
+		 BTSortedPage currentPage = new BTSortedPage(curPage, headerPage.get_keyType()); //???????
+			 
+		 while(currentPage.getType() == NodeType.INDEX){
+			
+			 //get next nodeId
+			 BTIndexPage currentIndexPage = new BTIndexPage(curPage,headerPage.get_keyType()); 
+			 PageId childPageId = currentIndexPage.getPageNoByKey(key);
+				 
+			 //unpin current
+			 unpinPage(currentPageId,false);
+				 
+			 currentPageId = childPageId;
+				 
+			 curPage = new Page();
+			 pinPage(currentPageId, curPage, false);
+			 currentPage = new BTSortedPage(curPage, headerPage.get_keyType());
+		 }
+			 
+		 //Node Type = Leaf
+			 
+		 BTLeafPage currentLeafPage = new BTLeafPage(curPage, headerPage.get_keyType());
+		 KeyDataEntry entry = new KeyDataEntry(key, rid);
+			 
+		 unpinPage(currentPageId, true);
+			 
+		 return currentLeafPage.delEntry(entry);
+	
+	 }
 	
 	//////////////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////////////
@@ -437,12 +475,9 @@ public class BTreeFile extends IndexFile implements GlobalConst {
 	}
 
 	public BTreeHeaderPage getHeaderPage() {
-		// TODO Auto-generated method stub
-		return null;
+
+	    return headerPage;
 	}
 
-	public boolean Delete(KeyClass key, RID rid) {
-		// TODO Auto-generated method stub
-		return false;
-	}
+
 }
