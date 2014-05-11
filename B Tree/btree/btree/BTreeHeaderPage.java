@@ -1,23 +1,13 @@
 package btree;
 
-import java.io.IOException;
-
-import bufmgr.BufMgrException;
-import bufmgr.BufferPoolExceededException;
-import bufmgr.HashEntryNotFoundException;
-import bufmgr.HashOperationException;
-import bufmgr.InvalidFrameNumberException;
-import bufmgr.PageNotReadException;
-import bufmgr.PagePinnedException;
-import bufmgr.PageUnpinnedException;
-import bufmgr.ReplacerException;
-import diskmgr.DiskMgrException;
-import diskmgr.Page;
 import global.PageId;
-import global.RID;
 import global.SystemDefs;
 import heap.HFBufMgrException;
 import heap.HFPage;
+
+import java.io.IOException;
+
+import diskmgr.Page;
 
 public class BTreeHeaderPage extends HFPage {
 
@@ -44,6 +34,7 @@ public class BTreeHeaderPage extends HFPage {
 			PageId id = SystemDefs.JavabaseBM.newPage(apage, 1);
 			if (id == null)
 				throw new ConstructPageException(null, "new page failed");
+			this.init(id, apage);
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			throw new ConstructPageException(null,

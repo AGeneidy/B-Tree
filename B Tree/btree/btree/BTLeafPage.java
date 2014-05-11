@@ -59,7 +59,7 @@ public class BTLeafPage extends BTSortedPage {
 		KeyDataEntry KDEntry;
 		try {
 			int i = ++rid.slotNo;
-			if (getSlotCnt() <= 0)
+			if (getSlotCnt() <= i)
 				return null;
 			KDEntry = BT.getEntryFromBytes(getpage(), getSlotOffset(i),
 					getSlotLength(i), keyType, NodeType.LEAF);
